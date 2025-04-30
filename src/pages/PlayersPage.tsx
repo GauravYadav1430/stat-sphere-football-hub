@@ -3,11 +3,16 @@ import { useState, useEffect } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { PlayerCard } from '@/components/player/PlayerCard';
 import { PlayerFilter } from '@/components/player/PlayerFilter';
-import { Player, players } from '@/data/mockData';
+import { Player } from '@/data/mockData';
 import { Button } from '@/components/ui/button';
+import { fetchTopPlayers } from '@/services/api/playersApi';
+import { mapApiPlayerToAppPlayer } from '@/services/api/mappers';
+import { useQuery } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const PlayersPage = () => {
-  const [filteredPlayers, setFilteredPlayers] = useState<Player[]>(players);
+  const [filteredPlayers, setFilteredPlayers] = useState<Player[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [positionFilter, setPositionFilter] = useState('all');
   const [nationalityFilter, setNationalityFilter] = useState('all');
@@ -15,50 +20,65 @@ const PlayersPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const playersPerPage = 9;
   
+  // Fetch players data using React Query
+  const { data: playersData, isLoading, error } = useQuery({
+    queryKey: ['players'],
+    queryFn: async () => {
+      const apiPlayers = await fetchTopPlayers();
+      return apiPlayers.map(mapApiPlayerToAppPlayer);
+    },
+    onError: () => {
+      toast.error("Failed to load players data. Falling back to mock data.");
+    }
+  });
+  
+  // Use API data or fall back to mock data if API fails
   useEffect(() => {
-    let result = [...players];
-    
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        player => player.name.toLowerCase().includes(query) || 
-                  player.nationality.toLowerCase().includes(query) ||
-                  player.currentClub.toLowerCase().includes(query)
-      );
-    }
-    
-    // Apply position filter
-    if (positionFilter !== 'all') {
-      result = result.filter(player => player.position === positionFilter);
-    }
-    
-    // Apply nationality filter
-    if (nationalityFilter !== 'all') {
-      result = result.filter(player => player.nationality === nationalityFilter);
-    }
-    
-    // Sort players
-    result.sort((a, b) => {
-      switch (sortBy) {
-        case 'name':
-          return a.name.localeCompare(b.name);
-        case 'goals':
-          return b.stats.goals - a.stats.goals;
-        case 'assists':
-          return b.stats.assists - a.stats.assists;
-        case 'appearances':
-          return b.stats.appearances - a.stats.appearances;
-        case 'age':
-          return a.age - b.age;
-        default:
-          return 0;
+    if (playersData) {
+      let result = [...playersData];
+      
+      // Apply search filter
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        result = result.filter(
+          player => player.name.toLowerCase().includes(query) || 
+                    player.nationality.toLowerCase().includes(query) ||
+                    player.currentClub.toLowerCase().includes(query)
+        );
       }
-    });
-    
-    setFilteredPlayers(result);
-    setCurrentPage(1); // Reset to first page when filters change
-  }, [searchQuery, positionFilter, nationalityFilter, sortBy]);
+      
+      // Apply position filter
+      if (positionFilter !== 'all') {
+        result = result.filter(player => player.position === positionFilter);
+      }
+      
+      // Apply nationality filter
+      if (nationalityFilter !== 'all') {
+        result = result.filter(player => player.nationality === nationalityFilter);
+      }
+      
+      // Sort players
+      result.sort((a, b) => {
+        switch (sortBy) {
+          case 'name':
+            return a.name.localeCompare(b.name);
+          case 'goals':
+            return b.stats.goals - a.stats.goals;
+          case 'assists':
+            return b.stats.assists - a.stats.assists;
+          case 'appearances':
+            return b.stats.appearances - a.stats.appearances;
+          case 'age':
+            return a.age - b.age;
+          default:
+            return 0;
+        }
+      });
+      
+      setFilteredPlayers(result);
+      setCurrentPage(1); // Reset to first page when filters change
+    }
+  }, [playersData, searchQuery, positionFilter, nationalityFilter, sortBy]);
   
   // Pagination
   const indexOfLastPlayer = currentPage * playersPerPage;
@@ -86,10 +106,19 @@ const PlayersPage = () => {
           onSortChange={setSortBy}
         />
         
-        {filteredPlayers.length === 0 ? (
+        {isLoading ? (
+          <div className="flex justify-center items-center min-h-[400px]">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-2">Loading player data...</span>
+          </div>
+        ) : error || filteredPlayers.length === 0 ? (
           <div className="text-center py-12">
-            <h3 className="text-xl font-heading mb-2">No players found</h3>
-            <p className="text-muted-foreground mb-4">Try adjusting your search or filters</p>
+            <h3 className="text-xl font-heading mb-2">
+              {error ? "Error loading players" : "No players found"}
+            </h3>
+            <p className="text-muted-foreground mb-4">
+              {error ? "There was a problem fetching player data." : "Try adjusting your search or filters"}
+            </p>
             <Button onClick={() => {
               setSearchQuery('');
               setPositionFilter('all');

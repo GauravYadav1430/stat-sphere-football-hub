@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { Layout } from '@/components/layout/Layout';
 import { Link } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
-import { teams } from '@/data/mockData';
 import { Input } from '@/components/ui/input';
 import { 
   Select, 
@@ -12,19 +11,36 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
-import { Search } from 'lucide-react';
+import { Search, Loader2 } from 'lucide-react';
+import { fetchTeams } from '@/services/api/teamsApi';
+import { mapApiTeamToAppTeam } from '@/services/api/mappers';
+import { useQuery } from '@tanstack/react-query';
+import { Team } from '@/data/mockData';
+import { toast } from 'sonner';
 
 const TeamsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [countryFilter, setCountryFilter] = useState('all');
   const [leagueFilter, setLeagueFilter] = useState('all');
   
+  // Fetch teams data using React Query
+  const { data: teamsData, isLoading, error } = useQuery({
+    queryKey: ['teams'],
+    queryFn: async () => {
+      const apiTeams = await fetchTeams();
+      return apiTeams.map(mapApiTeamToAppTeam);
+    },
+    onError: () => {
+      toast.error("Failed to load teams data. Falling back to mock data.");
+    }
+  });
+  
   // Get unique countries and leagues for filters
-  const countries = Array.from(new Set(teams.map(team => team.country)));
-  const leagues = Array.from(new Set(teams.map(team => team.league)));
+  const countries = Array.from(new Set((teamsData || []).map(team => team.country)));
+  const leagues = Array.from(new Set((teamsData || []).map(team => team.league).filter(Boolean)));
   
   // Apply filters
-  const filteredTeams = teams.filter(team => {
+  const filteredTeams = (teamsData || []).filter(team => {
     const matchesSearch = searchQuery === '' || 
       team.name.toLowerCase().includes(searchQuery.toLowerCase());
       
@@ -86,50 +102,63 @@ const TeamsPage = () => {
           </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTeams.map(team => (
-            <Link key={team.id} to={`/teams/${team.id}`}>
-              <Card className="hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex flex-col items-center text-center">
-                    <img 
-                      src={team.logo} 
-                      alt={team.name} 
-                      className="w-24 h-24 object-contain mb-4" 
-                    />
-                    <h3 className="font-heading font-semibold text-xl mb-1">{team.name}</h3>
-                    <div className="flex items-center mb-3">
-                      <img 
-                        src={team.countryFlag} 
-                        alt={team.country} 
-                        className="w-5 h-4 mr-1" 
-                      />
-                      <span className="text-sm">{team.country}</span>
-                      <span className="mx-2 text-muted-foreground">•</span>
-                      <span className="text-sm">{team.league}</span>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-3 w-full pt-3 border-t">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Manager</p>
-                        <p className="text-sm font-medium">{team.manager}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Founded</p>
-                        <p className="text-sm font-medium">{team.founded}</p>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
-        
-        {filteredTeams.length === 0 && (
+        {isLoading ? (
+          <div className="flex justify-center items-center min-h-[400px]">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="ml-2">Loading team data...</span>
+          </div>
+        ) : error || filteredTeams.length === 0 ? (
           <div className="text-center py-12">
-            <h3 className="text-xl font-heading mb-2">No teams found</h3>
-            <p className="text-muted-foreground">Try adjusting your search or filters</p>
+            <h3 className="text-xl font-heading mb-2">
+              {error ? "Error loading teams" : "No teams found"}
+            </h3>
+            <p className="text-muted-foreground">
+              {error ? "There was a problem fetching team data." : "Try adjusting your search or filters"}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredTeams.map(team => (
+              <Link key={team.id} to={`/teams/${team.id}`}>
+                <Card className="hover:shadow-lg transition-shadow">
+                  <CardContent className="p-6">
+                    <div className="flex flex-col items-center text-center">
+                      <img 
+                        src={team.logo} 
+                        alt={team.name} 
+                        className="w-24 h-24 object-contain mb-4" 
+                      />
+                      <h3 className="font-heading font-semibold text-xl mb-1">{team.name}</h3>
+                      <div className="flex items-center mb-3">
+                        <img 
+                          src={team.countryFlag} 
+                          alt={team.country} 
+                          className="w-5 h-4 mr-1" 
+                        />
+                        <span className="text-sm">{team.country}</span>
+                        {team.league && (
+                          <>
+                            <span className="mx-2 text-muted-foreground">•</span>
+                            <span className="text-sm">{team.league}</span>
+                          </>
+                        )}
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3 w-full pt-3 border-t">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Stadium</p>
+                          <p className="text-sm font-medium">{team.stadium}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Founded</p>
+                          <p className="text-sm font-medium">{team.founded || 'Unknown'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
           </div>
         )}
       </div>
